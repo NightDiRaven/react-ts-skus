@@ -1,29 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './style.css';
 import { groups, Id, skus, tags } from './data';
-import { Graph, SkuGraph } from './Graph';
+import { SkuGraph } from './Graph';
 
 interface IChosenEntry {
   groupId: Id;
   tagId: Id;
 }
+const allTagIds = tags.map((tag) => tag.id);
 
-const getArraysIntersection = (arr: Id[][]) => {
-  return arr.reduce((p, c) => p.filter((e) => c.includes(e)));
-};
+interface Selected {
+  [key: Id]: { tagId: Id; disabled?: Set<Id> };
+}
 
 function App() {
-  const [chosen, setChosen] = useState<IChosenEntry[]>([]);
-  const isTagChosen = (props: IChosenEntry) => {
-    const { tagId, groupId } = props;
-    return chosen.find(
-      (entry) => entry.tagId === tagId && entry.groupId === groupId
-    );
-  };
-  const chosenIds = useMemo(() => {
-    return chosen.map((el) => el.tagId);
-  }, [chosen]);
-
   const groupsPopulatedWithTags = useMemo(() => {
     return groups.map((group) => {
       return {
@@ -33,139 +23,76 @@ function App() {
     });
   }, []);
 
+  const [selected, setSelected] = useState<Selected>({});
+
+  const getDisabled = (selected) =>
+    Object.values(selected)
+      .map((value) => Array.from(value.disabled || []))
+      .flat();
+
   const graph = new SkuGraph();
 
-  graph.setUp({ groups: groupsPopulatedWithTags, skus });
+  graph.setUp({ groups: groupsPopulatedWithTags, skus, tags });
 
   useEffect(() => {
-    graph.setUp({ groups: groupsPopulatedWithTags, skus });
-  }, [groupsPopulatedWithTags, skus]);
+    graph.setUp({ groups: groupsPopulatedWithTags, skus, tags });
+  }, [groupsPopulatedWithTags, skus, tags]);
 
-  const selectItem = (id) => {
-    graph.handleSelect(id, (v, a) => console.log(v, a));
-  };
+  const selectItem = ({ groupId, tagId }) => {
+    if (selected[groupId] && selected[groupId]?.tagId === tagId) {
+      delete selected[groupId];
+      const disabled = getDisabled(selected);
 
-  console.log(graph);
-  selectItem(tags[0].id);
-
-  const tagIdToSku = useMemo(() => {
-    const map: { [key: Id]: Id[] } = {};
-
-    tags.forEach((tag) => {
-      map[tag.id] = [];
-    });
-
-    skus.forEach((sku) => {
-      sku.tags.forEach((tagId) => {
-        map[tagId].push(sku.id);
-      });
-    });
-    return map;
-  }, []);
-
-  const skuIdToTags = useMemo(() => {
-    return Object.fromEntries(skus.map((sku) => [[sku.id], sku.tags]));
-  }, []);
-
-  const availableTags = useMemo<Id[]>(() => {
-    if (chosen.length === 0) {
-      return [];
-    }
-
-    const commonTags = chosenIds.map((id) => [...tagsGraph[id]]);
-
-    const tagsIntersection = [
-      ...getArraysIntersection(commonTags),
-      ...chosenIds,
-    ];
-
-    const resultTagsCollection = new Set(tagsIntersection);
-
-    if (chosen.length >= 2) {
-      const chosenSkus = [];
-
-      for (
-        let i = 0;
-        i < chosen.length && i < groupsPopulatedWithTags.length - 1;
-        i++
-      ) {
-        chosenSkus.push(tagIdToSku[chosenIds[i]]);
-      }
-      const chosenSkusIntersection = getArraysIntersection(chosenSkus);
-
-      chosenSkusIntersection.forEach((skuId) => {
-        const skuTags = skuIdToTags[skuId];
-        skuTags.forEach((tagId: Id) => {
-          resultTagsCollection.add(tagId);
-        });
-      });
-    }
-
-    return [...resultTagsCollection];
-  }, [
-    chosen.length,
-    chosenIds,
-    groupsPopulatedWithTags.length,
-    skuIdToTags,
-    tagIdToSku,
-    tagsGraph,
-  ]);
-
-  const toggleTagSelection = (props: IChosenEntry) => {
-    setChosen((prevState) => {
-      const { groupId, tagId } = props;
-      if (prevState.length === 0) {
-        return [{ groupId, tagId }];
-      }
-      let newState = prevState.map((el) => ({ ...el }));
-      const existingEntryIndex = newState.findIndex(
-        (item) => item.groupId === groupId
-      );
-      if (existingEntryIndex === -1) {
-        newState.push({ groupId, tagId });
+      const otherTag = Object.keys(selected).at(0)?.tagId;
+      if (otherTag) {
+        graph.handleSelect(tagId, (v, a) => {}, disabled);
       } else {
-        const existingEntry = newState[existingEntryIndex];
-        if (existingEntry.tagId === tagId) {
-          newState = newState.filter((entry) => entry.tagId !== tagId);
-        } else {
-          newState.splice(existingEntryIndex, 1, {
-            groupId: groupId,
-            tagId: tagId,
-          });
-        }
+        console.log('need remove all disabled if needed');
       }
-      return newState;
-    });
+    } else {
+      selected[groupId] = { tagId };
+      const disabled = getDisabled(selected);
+
+      const disabledSet = new Set([...allTagIds]);
+
+      console.log('in peredacha', disabled);
+      graph.handleSelect(
+        tagId,
+        (v) => {
+          disabledSet.delete(v);
+        },
+        disabled
+      );
+
+      selected[groupId] = { tagId, disabled: disabledSet };
+    }
+
+    setSelected({ ...selected });
   };
-  const isTagDisabled = (id: Id) => {
-    if (chosen.length === 0) {
-      return false;
-    }
-    if (tagIdToSku[id].length === 0) {
-      return false;
-    }
-    return !availableTags.includes(id);
-  };
 
-  const areAllOptionsChosen = useMemo(() => {
-    return groupsPopulatedWithTags.length === chosen.length;
-  }, [chosen.length, groupsPopulatedWithTags.length]);
+  const isTagDisabled = (tagId) =>
+    Object.values(selected).some(({ disabled }) => disabled?.has(tagId));
 
-  const currentSku = useMemo(() => {
-    if (!areAllOptionsChosen) {
-      return null;
-    }
+  const isTagSelected = ({ tagId, groupId }) =>
+    selected?.[groupId]?.tagId === tagId;
 
-    const chosen = chosenIds.map((id) => tagIdToSku[id]);
-    const intersection = [...new Set(getArraysIntersection(chosen))];
-    if (intersection.length === 0) {
-      console.error('There should be at least one sku for chosen items');
-    }
-    if (intersection.length !== 1) {
-      console.error('Only one sku for chosen items should exist');
-    }
-    return intersection[0];
-  }, [areAllOptionsChosen, chosenIds, tagIdToSku]);
+  console.log(
+    Object.values(selected).map(
+      ({ tagId, disabled }) =>
+        `${tagId} запрещает ${Array.from(disabled).join(', ')}`
+    )
+  );
+  // selectItem({ tagId: tags[0].id, groupId: tags[0].groupId });
+
+  const areAllOptionsChosen = Object.keys(selected).length === groups.length;
+  const currentSku = skus.find(
+    (sku) =>
+      sku.tags.sort().join('-') ===
+      Object.values(selected)
+        .map(({ tagId }) => tagId)
+        .sort()
+        .join('-')
+  )?.id;
 
   return (
     <div className={'app'}>
@@ -181,8 +108,8 @@ function App() {
               return (
                 <button
                   key={tag.id}
-                  onClick={() => toggleTagSelection(tagInfo)}
-                  className={isTagChosen(tagInfo) ? 'active' : ''}
+                  onClick={() => selectItem(tagInfo)}
+                  className={isTagSelected(tagInfo) ? 'active' : ''}
                   disabled={isTagDisabled(tag.id)}
                 >
                   {tag.value}
