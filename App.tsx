@@ -46,6 +46,13 @@ function App() {
 
   graph.setUp({ groups: groupsPopulatedWithTags, skus: skusPopulatedWithTags });
 
+  const getFilteredSkus = (skus) => {
+    const selectedTags = Object.values(selected).map(({ tagId }) => tagId);
+    return skus.filter(({ sku }) => {
+      return !selectedTags.some((tagId) => !sku.tags.includes(tagId));
+    });
+  };
+
   useEffect(() => {
     graph.setUp({
       groups: groupsPopulatedWithTags,
@@ -67,6 +74,10 @@ function App() {
     } else {
       selected[groupId] = { tagId };
       const disabled = getDisabled(selected);
+      const filteredSkus = getFilteredSkus(skusPopulatedWithTags);
+
+      console.log('here', filteredSkus);
+      graph.setUp({ groups: groupsPopulatedWithTags, skus: filteredSkus });
 
       const disabledSet = new Set([...allTagIds]);
 
