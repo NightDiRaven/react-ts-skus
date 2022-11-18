@@ -7,6 +7,7 @@ interface IChosenEntry {
   groupId: Id;
   tagId: Id;
 }
+
 const allTagIds = tags.map((tag) => tag.id);
 
 interface Selected {
@@ -14,14 +15,25 @@ interface Selected {
 }
 
 function App() {
-  const groupsPopulatedWithTags = useMemo(() => {
-    return groups.map((group) => {
-      return {
+  const groupsPopulatedWithTags = useMemo(
+    () =>
+      groups.map((group) => ({
         group,
         tags: tags.filter((tag) => tag.groupId === group.id),
-      };
-    });
-  }, []);
+      })),
+    []
+  );
+
+  const skusPopulatedWithTags = useMemo(
+    () =>
+      skus.map((sku) => ({
+        sku,
+        tags: groupsPopulatedWithTags.map(({ tags }) =>
+          tags.filter((tag) => sku.tags.includes(tag.id)).shift()
+        ),
+      })),
+    []
+  );
 
   const [selected, setSelected] = useState<Selected>({});
 
@@ -32,11 +44,14 @@ function App() {
 
   const graph = new SkuGraph();
 
-  graph.setUp({ groups: groupsPopulatedWithTags, skus, tags });
+  graph.setUp({ groups: groupsPopulatedWithTags, skus: skusPopulatedWithTags });
 
   useEffect(() => {
-    graph.setUp({ groups: groupsPopulatedWithTags, skus, tags });
-  }, [groupsPopulatedWithTags, skus, tags]);
+    graph.setUp({
+      groups: groupsPopulatedWithTags,
+      skus: skusPopulatedWithTags,
+    });
+  }, [groupsPopulatedWithTags, skusPopulatedWithTags]);
 
   const selectItem = ({ groupId, tagId }) => {
     if (selected[groupId] && selected[groupId]?.tagId === tagId) {

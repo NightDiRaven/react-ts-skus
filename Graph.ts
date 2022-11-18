@@ -51,6 +51,7 @@ export class Graph {
             stack.push({
               node: neighbour.node,
               weight: neighbour.weight + vertex.weight,
+              payload: neighbour.payload,
               prev: vertex,
             });
           }
@@ -80,17 +81,12 @@ export class Graph {
 export class SkuGraph extends Graph {
   maxDFSWeight: number;
 
-  addSiblingEdges(items: Id[], tags: ITag[]) {
-    for (let i = 1; i <= items.length - 1; i++) {
+  addSiblingEdges(tags: ITag[]) {
+    for (let i = 1; i <= tags.length - 1; i++) {
       this.addEdge(
-        items[i],
-        items[i - 1],
-        [
-          tags.find((tag) => tag.id === items[i]),
-          tags.find((tag) => tag.id === items[i - 1]),
-        ]
-          .sort()
-          .join('-')
+        tags[i].id,
+        tags[i - 1].id,
+        [tags[i].groupId, tags[i - 1].groupId].sort().join('-')
       );
     }
   }
@@ -98,11 +94,9 @@ export class SkuGraph extends Graph {
   setUp({
     groups,
     skus,
-    tags,
   }: {
     groups: { group: IGroup; tags: ITag[] }[];
-    skus: ISku[];
-    tags: ITag[];
+    skus: { sku: ISku; tags: ITag[] }[];
   }) {
     this.adjacencyList = {};
     this.maxDFSWeight = groups.length;
@@ -120,8 +114,8 @@ export class SkuGraph extends Graph {
       );
     });
 
-    skus.forEach((sku) => {
-      this.addSiblingEdges(sku.tags, tags);
+    skus.forEach(({ tags }) => {
+      this.addSiblingEdges(tags);
     });
   }
 
@@ -129,11 +123,14 @@ export class SkuGraph extends Graph {
     this.dfs(
       tagId,
       (vertex) => {
-        console.log(vertex, vertex.weight < this.maxDFSWeight);
         callback(vertex.node, vertex.weight < this.maxDFSWeight);
       },
       ({ vertex, prev }) => {
         if (vertex.weight + prev.weight >= this.maxDFSWeight) {
+          return false;
+        }
+
+        if (prev.payload === vertex.payload) {
           return false;
         }
 
